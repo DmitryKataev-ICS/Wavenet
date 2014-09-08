@@ -9,6 +9,6 @@ module Main =
     let main argv = 
         let gazp = DelimitedReader.Read<float>("gazp.csv", false, ";", false, new System.Globalization.CultureInfo("en-US"))
 
-        printfn "%s" (wtf.ToString())
+        printfn "%s" (gazp.ToString())
         printfn "%A" argv
         0 // return an integer exit code
