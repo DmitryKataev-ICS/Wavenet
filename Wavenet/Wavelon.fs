@@ -22,7 +22,7 @@ module Wavelon =
         member x.Trans = ref translations
         member x.Dil = ref dilations
 
-    type Wavelon(indim, outdim, hiddim) = 
+    type Wavelon(indim, outdim, ts_length) = 
         
         //magic
         let freq = (0.2e-100, 1.0)
@@ -41,7 +41,9 @@ module Wavelon =
             ) 
             / (input_power + output_power))
         *)
-        let hiddim = hiddim
+        let hiddim = 
+            ( float(outdim * ts_length) / (1.0 + (ts_length|>float|>log) / (log 2.0)) ) / ( (indim + outdim) |> float )
+            |> int
         //weights, etc.
         let curMat =
             InnerMatrices
@@ -108,7 +110,7 @@ module Wavelon =
             let dLambda = Zs * ( (input * curMat.InCon.Value - curMat.Trans.Value) ./ (curMat.Dil.Value .* curMat.Dil.Value) )
             x.Backup dChi dM dOmega dT dLambda
 
-    let train epochs (training : (Matrix<float>*Matrix<float>) array) (validation : (Matrix<float>*Matrix<float>) array) (net : Wavelon) =
+    let train epochs (training : Matrix<float>*Matrix<float>) (validation : Matrix<float>*Matrix<float>) (net : Wavelon) =
         let rand = new System.Random()
 
         let swap (a: _[]) x y =
@@ -123,18 +125,26 @@ module Wavelon =
         let track = ref []
         for i in 1..epochs do
             // fst - in; snd - out
-            let localtrain = 
-                let tmp = training
-                shuffle tmp
-                tmp
+            let (loc_in, loc_out) = 
+                let tmpin = fst training
+                let tmpout = snd training
+                let inversion = [|0..(tmpin.RowCount-1)|]
+                shuffle inversion
+                let permutation = Permutation.FromInversions inversion
+                tmpin.PermuteRows permutation
+                tmpout.PermuteRows permutation
+                (tmpin, tmpout)
             Array.iter 
-                (fun (elem : Matrix<float>*Matrix<float>) -> net.Backward ((snd elem) - (net.Forward (fst elem))) (fst elem) )
-                localtrain
+                (fun i -> net.Backward (((loc_out.Row i).ToRowMatrix() ) - (net.Forward ((loc_in.Row i).ToRowMatrix()))) ((loc_in.Row i).ToRowMatrix()) )
+                [|0..(loc_in.RowCount-1)|]
             let local_MSE =
-                let errors = Array.map (fun (elem : Matrix<float>*Matrix<float>) -> (snd elem) - (net.Forward (fst elem)) ) validation
+                let errors = 
+                    Array.map 
+                        (fun i -> ((snd validation).Row i).ToRowMatrix() - (net.Forward (((fst validation).Row i).ToRowMatrix())) ) 
+                        [|0..((fst validation).RowCount-1)|]
                 let sq_errors = Array.map (fun (m : Matrix<float>) -> Matrix.map (fun x -> x*x) m) errors
                 Array.reduce (+) sq_errors |> (*) 0.5
-            let aux = validation.Length * net.OutDim |> float
+            let aux = (fst validation).RowCount * net.OutDim |> float
             Matrix.mapInPlace (fun x -> x / aux) local_MSE
             track := local_MSE :: !track
-        track.Value
+        (track.Value, net)
