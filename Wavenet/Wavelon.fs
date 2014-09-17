@@ -7,7 +7,7 @@ module Wavelon =
     open MathNet.Numerics.LinearAlgebra
     open MathNet.Numerics.Distributions
 
-    let etta = 0.01
+    let etta = 0.005
 
     type InnerMatrices
         (
@@ -25,7 +25,7 @@ module Wavelon =
     type Wavelon(indim, outdim, ts_length) = 
         
         //magic
-        let freq = (0.2e-100, 1.0)
+        let freq = (0.001, 1.0)
         let dilation = (from_freq.[(int)MotherFunction.MexicanHat] (snd freq), from_freq.[(int)MotherFunction.MexicanHat] (snd freq))
         let translation = (-5.0, 5.0)
         //dimensions
@@ -105,9 +105,9 @@ module Wavelon =
             let dM = Z.TransposeThisAndMultiply error
             let dOmega = 
                 input.TransposeThisAndMultiply(
-                    (curMat.OutCon.Value.TransposeAndMultiply error).TransposeThisAndMultiply(Zs ./ curMat.Dil.Value))
-            let dT = error * curMat.OutCon.Value.TransposeThisAndMultiply(Zs ./ curMat.Dil.Value)
-            let dLambda = Zs * ( (input * curMat.InCon.Value - curMat.Trans.Value) ./ (curMat.Dil.Value .* curMat.Dil.Value) )
+                    (curMat.OutCon.Value.TransposeAndMultiply error).Transpose() .* (Zs ./ curMat.Dil.Value))
+            let dT = error * curMat.OutCon.Value.Transpose() .* (Zs ./ curMat.Dil.Value)
+            let dLambda = Zs .* ( (input * curMat.InCon.Value - curMat.Trans.Value) ./ (curMat.Dil.Value .* curMat.Dil.Value) )
             x.Backup dChi dM dOmega dT dLambda
 
     let train epochs (training : Matrix<float>*Matrix<float>) (validation : Matrix<float>*Matrix<float>) (net : Wavelon) =
