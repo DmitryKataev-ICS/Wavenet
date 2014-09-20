@@ -7,7 +7,7 @@ module Wavelon =
     open MathNet.Numerics.LinearAlgebra
     open MathNet.Numerics.Distributions
 
-    let etta = 0.005
+    let etta = 0.01
 
     type InnerMatrices
         (
@@ -25,9 +25,9 @@ module Wavelon =
     type Wavelon(indim, outdim, ts_length) = 
         
         //magic
-        let freq = (0.001, 1.0)
+        let freq = (0.01, 1.0)
         let dilation = (from_freq.[(int)MotherFunction.MexicanHat] (snd freq), from_freq.[(int)MotherFunction.MexicanHat] (snd freq))
-        let translation = (-5.0, 5.0)
+        let translation = (-2.0, 2.0)
         //dimensions
         let indim = indim
         let outdim = outdim
@@ -43,71 +43,77 @@ module Wavelon =
         *)
         let hiddim = 
             ( float(outdim * ts_length) / (1.0 + (ts_length|>float|>log) / (log 2.0)) ) / ( (indim + outdim) |> float )
+            |> (*) 2.5
             |> int
         //weights, etc.
         let curMat =
-            InnerMatrices
+            ref (InnerMatrices
                 (
                     DenseMatrix.random<float> indim hiddim (ContinuousUniform(0.0, 1.0)),
                     DenseMatrix.random<float> hiddim outdim (ContinuousUniform(0.0, 1.0)),
                     DenseMatrix.random<float> 1 outdim (ContinuousUniform(0.0, 1.0)),
                     DenseMatrix.random<float> 1 hiddim (ContinuousUniform(fst translation, snd translation)),
                     DenseMatrix.random<float> 1 hiddim (ContinuousUniform(fst dilation, snd dilation))    
-                )
+                ))
         let oldMat =
-            InnerMatrices
+            ref (InnerMatrices
                 (
                     DenseMatrix.zero indim hiddim,
                     DenseMatrix.zero hiddim outdim,
                     DenseMatrix.zero 1 outdim,
                     DenseMatrix.zero 1 hiddim,
                     DenseMatrix.zero 1 hiddim
-                )
+                ))
         let mother = motherfunctions.[(int)MotherFunction.MexicanHat]
         let derivative = derivatives.[(int)MotherFunction.MexicanHat]
 
         //methods
+        member x.OldMat with get()=oldMat
+        member x.CurMat with get()=curMat
         member x.OutDim with get() = outdim
         member x.Forward(input : Matrix<float>) = 
-            let tmp = (input * curMat.InCon.Value - curMat.Trans.Value) ./ curMat.Dil.Value //tmp - row-vector
+            let tmp = (input * x.CurMat.Value.InCon.Value - x.CurMat.Value.Trans.Value) ./ x.CurMat.Value.Dil.Value //tmp - row-vector
             tmp.MapInplace (System.Func<float, float>(mother))
-            tmp * curMat.OutCon.Value + curMat.Sum.Value //result - row-vector
+            tmp * x.CurMat.Value.OutCon.Value + x.CurMat.Value.Sum.Value //result - row-vector
         
         member x.Backup dChi dM dOmega dT dLambda = 
             let step (x : Matrix<float>) (y : Matrix<float>) (o : Matrix<float>) = x + y.Multiply(etta) + (x - o).Multiply(etta)
             let newMat =
                 InnerMatrices
                     (
-                        step curMat.InCon.Value dOmega oldMat.InCon.Value,
-                        step curMat.OutCon.Value dM oldMat.OutCon.Value,
-                        step curMat.Sum.Value dChi oldMat.Sum.Value,
-                        step curMat.Trans.Value dT oldMat.Trans.Value,
-                        step curMat.Dil.Value dLambda oldMat.Dil.Value
+                        step curMat.Value.InCon.Value dOmega oldMat.Value.InCon.Value,
+                        step curMat.Value.OutCon.Value dM oldMat.Value.OutCon.Value,
+                        step curMat.Value.Sum.Value dChi oldMat.Value.Sum.Value,
+                        step curMat.Value.Trans.Value dT oldMat.Value.Trans.Value,
+                        step curMat.Value.Dil.Value dLambda oldMat.Value.Dil.Value
                     )
+            x.OldMat := curMat.Value
+//            x.OldMat.InCon := curMat.InCon.Value
+//            x.OldMat.OutCon := curMat.OutCon.Value
+//            x.OldMat.Sum := curMat.Sum.Value
+//            x.OldMat.Trans := curMat.Trans.Value
+//            x.OldMat.Dil := curMat.Dil.Value
+            x.CurMat := newMat
+//            x.CurMat.InCon := newMat.InCon.Value
+//            x.CurMat.OutCon := newMat.OutCon.Value
+//            x.CurMat.Sum := newMat.Sum.Value
+//            x.CurMat.Trans := newMat.Trans.Value
+//            x.CurMat.Dil := newMat.Dil.Value
 
-            oldMat.InCon := curMat.InCon.Value
-            oldMat.OutCon := curMat.OutCon.Value
-            oldMat.Sum := curMat.Sum.Value
-            oldMat.Trans := curMat.Trans.Value
-            oldMat.Dil := curMat.Dil.Value
-
-            curMat.InCon := newMat.InCon.Value
-            curMat.OutCon := newMat.OutCon.Value
-            curMat.Sum := newMat.Sum.Value
-            curMat.Trans := newMat.Trans.Value
-            curMat.Dil := newMat.Dil.Value
+            //printfn "%f" (x.CurMat.OutCon.Value.Item(0,0))
 
         member x.Backward (error : Matrix<float>) (input : Matrix<float>) = 
-            let protoZ = (input * curMat.InCon.Value - curMat.Trans.Value) ./ curMat.Dil.Value //vector-row
+            //printfn "%f" (error.Item(0,0))
+            let protoZ = (input * x.CurMat.Value.InCon.Value - x.CurMat.Value.Trans.Value) ./ curMat.Value.Dil.Value //vector-row
             let Z = protoZ.Map (System.Func<float, float>(mother))
             let Zs = protoZ.Map (System.Func<float, float>(derivative))
             let dChi = error
             let dM = Z.TransposeThisAndMultiply error
             let dOmega = 
                 input.TransposeThisAndMultiply(
-                    (curMat.OutCon.Value.TransposeAndMultiply error).Transpose() .* (Zs ./ curMat.Dil.Value))
-            let dT = error * curMat.OutCon.Value.Transpose() .* (Zs ./ curMat.Dil.Value)
-            let dLambda = Zs .* ( (input * curMat.InCon.Value - curMat.Trans.Value) ./ (curMat.Dil.Value .* curMat.Dil.Value) )
+                    (x.CurMat.Value.OutCon.Value.TransposeAndMultiply error).Transpose() .* (Zs ./ x.CurMat.Value.Dil.Value))
+            let dT = error * x.CurMat.Value.OutCon.Value.Transpose() .* (Zs ./ x.CurMat.Value.Dil.Value)
+            let dLambda = Zs .* ( (input * x.CurMat.Value.InCon.Value - x.CurMat.Value.Trans.Value) ./ (x.CurMat.Value.Dil.Value .* x.CurMat.Value.Dil.Value) )
             x.Backup dChi dM dOmega dT dLambda
 
     let train epochs (training : Matrix<float>*Matrix<float>) (validation : Matrix<float>*Matrix<float>) (net : Wavelon) =
@@ -145,6 +151,7 @@ module Wavelon =
                 let sq_errors = Array.map (fun (m : Matrix<float>) -> Matrix.map (fun x -> x*x) m) errors
                 Array.reduce (+) sq_errors |> (*) 0.5
             let aux = (fst validation).RowCount * net.OutDim |> float
+            printfn "%f" (local_MSE.Item(0,0))
             Matrix.mapInPlace (fun x -> x / aux) local_MSE
             track := local_MSE :: !track
         (track.Value, net)
