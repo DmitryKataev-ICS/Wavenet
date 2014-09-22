@@ -7,8 +7,7 @@ module Wavelon =
     open MathNet.Numerics.LinearAlgebra
     open MathNet.Numerics.Distributions
 
-    let etta = 0.01
-
+    let etta = 0.005
     type InnerMatrices
         (
             inconnections: Matrix<float>,
@@ -25,9 +24,9 @@ module Wavelon =
     type Wavelon(indim, outdim, ts_length) = 
         
         //magic
-        let freq = (0.01, 1.0)
+        let freq = (0.001, 1.0)
         let dilation = (from_freq.[(int)MotherFunction.MexicanHat] (snd freq), from_freq.[(int)MotherFunction.MexicanHat] (snd freq))
-        let translation = (-2.0, 2.0)
+        let translation = (-5.0, 5.0)
         //dimensions
         let indim = indim
         let outdim = outdim
@@ -43,7 +42,7 @@ module Wavelon =
         *)
         let hiddim = 
             ( float(outdim * ts_length) / (1.0 + (ts_length|>float|>log) / (log 2.0)) ) / ( (indim + outdim) |> float )
-            |> (*) 2.5
+            |> (*) 1.5
             |> int
         //weights, etc.
         let curMat =
@@ -129,7 +128,10 @@ module Wavelon =
             Array.iteri (fun i _ -> swap a i (rand.Next(i, Array.length a))) a
 
         let track = ref []
-        for i in 1..epochs do
+
+        let rec subtrain epochs (training : Matrix<float>*Matrix<float>) (validation : Matrix<float>*Matrix<float>) (net : Wavelon) =
+            
+        //for i in 1..epochs do
             // fst - in; snd - out
             let (loc_in, loc_out) = 
                 let tmpin = fst training
@@ -151,7 +153,11 @@ module Wavelon =
                 let sq_errors = Array.map (fun (m : Matrix<float>) -> Matrix.map (fun x -> x*x) m) errors
                 Array.reduce (+) sq_errors |> (*) 0.5
             let aux = (fst validation).RowCount * net.OutDim |> float
-            printfn "%f" (local_MSE.Item(0,0))
+            
             Matrix.mapInPlace (fun x -> x / aux) local_MSE
+            printfn "%i\t%f" epochs (local_MSE.RowSums().Sum())
             track := local_MSE :: !track
-        (track.Value, net)
+            if (local_MSE.RowSums().Sum() > 0.001) && (epochs > 0) then
+                subtrain (epochs - 1) training validation net
+            else (track.Value, net)
+        subtrain epochs training validation net

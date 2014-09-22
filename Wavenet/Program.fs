@@ -30,7 +30,7 @@ module Main =
                 (fun (x : Matrix<float>) -> x.Transpose())
             |> List.reduce
                 (fun (a : Matrix<float>) (b : Matrix<float>) -> a.Append b)
-        DelimitedWriter.Write( "validation.csv", openloop_validation, ";")
+        DelimitedWriter.Write( "validation.csv", openloop_validation.Transpose(), ";")
         let openloop_test =
             List.map
                 (fun i -> net.Forward ((tesi.Row i).ToRowMatrix()))
@@ -39,7 +39,7 @@ module Main =
                 (fun (x : Matrix<float>) -> x.Transpose())
             |> List.reduce
                 (fun (a : Matrix<float>) (b : Matrix<float>) -> a.Append b)
-        DelimitedWriter.Write( "test.csv", openloop_test, ";")
+        DelimitedWriter.Write( "test.csv", openloop_test.Transpose(), ";")
         //gazp.PermuteColumns
         //MathNet.Numerics.Permutation
         0 // return an integer exit code
